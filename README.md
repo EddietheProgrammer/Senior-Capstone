@@ -8,7 +8,7 @@ Right now I am using the [baseballcv](https://github.com/dylandru/BaseballCV/tre
 Here's how you should set this up (I recommend an IDE like VS Code; video files kinda crash Jupyter Notebook).
 
 ```bash
-git clone (whatever I call this)
+git clone https://github.com/EddietheProgrammer/Senior-Capstone.git
 ```
 
 Please keep in mind Windows file system is different with \ instead of / (Good going Microsoft):
