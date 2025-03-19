@@ -2,4 +2,7 @@ myenv
 assets/paper/
 .DS_Store
 .DS_Store?
+__pycache__
+butter.ipynb
+test.json
 # To remove .DS_Store manually: find . -name ".DS_Store" -delete

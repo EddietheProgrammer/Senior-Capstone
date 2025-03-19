@@ -28,19 +28,28 @@ source myenv/bin/activate # Note: This may be different for Windows so let me kn
 
 Lastly, you will need to:
 ```bash
-pip install baseballcv
+pip install -r requirements.txt
 ```
+I hopefully put everything there that is needed and it works, but if not, let me know. 
 
 This will install everything you need. I will update if there's additional packages. To deactivate your environment, simply type `deactivate` in the terminal.
 
 Also, please use a .gitignore file for files you don't want merged with the main branch. 
 i.e. the `myenv` folder. To do this, create a file called .gitignore then type your environment name in the file. It should be greyed out.
 
+# Running
+Under the 2D estimation folder, you will need to run the `2D_estimation.py` file to extract the points from the mp4 video. I still need to make some customizations so it's more efficient and runs seamlessly. Once you do that, it should write to a `test.json` file. Those are the coordinates used for the 3D pose model. To run the 3D pose model, you simply type in the terminal:
+```bash
+python infer_wild.py 
+--vid_path <your_video.mp4> # For this case, it's assets/test.mp4
+--json_path <alphapose-results.json>  # For this case it's test.json
+--out_path <output_path> # For this case it's assets/
+```
 
 ## Editors Note:
 You may also need to install the following:
 ```bash
-pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git
+pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git 
 ```
 
 # Contributing
