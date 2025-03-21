@@ -11,59 +11,6 @@ import pickle
 import math
 from torch.utils.data import Dataset, DataLoader
 from lib.utils.utils_data import crop_scale
-
-def halpe2h36m(x):
-    '''
-        Input: x (T x V x C)  
-       //Halpe 26 body keypoints
-    {0,  "Nose"},
-    {1,  "LEye"},
-    {2,  "REye"},
-    {3,  "LEar"},
-    {4,  "REar"},
-    {5,  "LShoulder"},
-    {6,  "RShoulder"},
-    {7,  "LElbow"},
-    {8,  "RElbow"},
-    {9,  "LWrist"},
-    {10, "RWrist"},
-    {11, "LHip"},
-    {12, "RHip"},
-    {13, "LKnee"},
-    {14, "Rknee"},
-    {15, "LAnkle"},
-    {16, "RAnkle"},
-    {17,  "Head"},
-    {18,  "Neck"},
-    {19,  "Hip"},
-    {20, "LBigToe"},
-    {21, "RBigToe"},
-    {22, "LSmallToe"},
-    {23, "RSmallToe"},
-    {24, "LHeel"},
-    {25, "RHeel"},
-    '''
-    print(x)
-    T, V, C = x.shape
-    y = np.zeros([T,17,C])
-    y[:,0,:] = x[:,19,:]
-    y[:,1,:] = x[:,12,:]
-    y[:,2,:] = x[:,14,:]
-    y[:,3,:] = x[:,16,:]
-    y[:,4,:] = x[:,11,:]
-    y[:,5,:] = x[:,13,:]
-    y[:,6,:] = x[:,15,:]
-    y[:,7,:] = (x[:,18,:] + x[:,19,:]) * 0.5
-    y[:,8,:] = x[:,18,:]
-    y[:,9,:] = x[:,0,:]
-    y[:,10,:] = x[:,17,:]
-    y[:,11,:] = x[:,5,:]
-    y[:,12,:] = x[:,7,:]
-    y[:,13,:] = x[:,9,:]
-    y[:,14,:] = x[:,6,:]
-    y[:,15,:] = x[:,8,:]
-    y[:,16,:] = x[:,10,:]
-    return y
     
 def read_input(json_path, vid_size, scale_range, focus):
     with open(json_path, "r") as read_file:

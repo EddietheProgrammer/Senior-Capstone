@@ -1,91 +1,178 @@
 import cv2
+from cv2.typing import MatLike
 from baseballcv.functions import LoadTools
 from ultralytics import YOLO
-from rtmlib import PoseTracker, Body, draw_skeleton
-from utils import coco_2_h36m, convert_2_alphapose
+from rtmlib import PoseTracker, Body
+from utils import coco_2_h36m, convert_2_alphapose, draw
 import numpy as np
 import json
+from h36m import h36m
+from tqdm import tqdm
+from typing import List, Dict, Any
 
+# TODO: FIX NONIMPLENTATION ERROR FROM THE TRACKER. I KNOW IT HAS SOMETHING TO DO WITH THE __call__ Method from YOLO.
+class TwoDEstimator:
+    """
+    Class that estimates the 2D poses of MLB Pitchers. 2 Main Functions
+    1. Write Frame: Purpose of this is to visualize the video and save it as mp4 for you to show your friends.
+    2. Write 2d Json: Purpose of this is to convert the poses to H36M format, which is then fed into the 3D model.
+    """
 
-tools = LoadTools()
+    def __init__(self, video_path: str) -> None:
+        self.tools = LoadTools()
+        self.video_path = video_path
+        self.phc_model = YOLO(self.tools.load_model('phc_detector', model_type='YOLO'))
+        self.tracker = PoseTracker(Body, 7, False, mode='performance', backend='onxruntime', device='cpu')
+        self.skeleton_dict = eval('h36m')
 
-device = 'cpu'  # cpu, cuda
-backend = 'onnxruntime'  # opencv, onnxruntime, openvino
+    def output_frames(self, frame: MatLike, keypoints: np.ndarray, skeleton_dict: Dict[str, Any]) -> MatLike:
+        """
+        Function that takes in the frames and keypoints to draw the skeleton.
 
-model = YOLO(tools.load_model('phc_detector', model_type='YOLO'))
+        Args:
+            frame (MatLike): The processed frame of the video.
+            keypoints (ndarray): The keypoints of each bodypart, presented in h36m format.
+            skeleton_dict (dict): The skeleton dictionary, in h36m format, of each body part and drawn line.
 
-cap = cv2.VideoCapture('assets/test.mp4')
+        Returns:
+            img (MatLike): The processed image with updated annotations for the skeleton.
+        """
+        for i in range(keypoints.shape[0]):
+            keypoint_info = skeleton_dict['keypoint_info']
+            skeleton_info = skeleton_dict['skeleton_info']
+            img = draw(frame, keypoints[i], keypoint_info, skeleton_info)
 
-# fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-# fps = 40
-# frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-# frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) 
+        return img
 
-# out = cv2.VideoWriter('assets/test-output.mp4', fourcc, fps, (frame_width, frame_height))
+    def process_frame(self, frame: MatLike, output_frame: bool = False) -> List[Dict[str, Any]]:
+        """
+        Processes the frames and converts it from coco17 to h36m format. A YOLO model is first ran to identify
+        the pitcher, then RTMPose is used to extract the body coordinates for the pitcher.
 
-tracker = PoseTracker(Body, 7, False, mode = 'performance', backend=backend, device=device)
+        Args:
+            frame (MatLike): The processed frame of the video.
+            output_frame (bool): A condition of whether you want to output the frame on the screen, default to False.
 
-alphapose_fmt = []
+        Returns:
+            alpahose_fmt (list): A list of dictionaries that are in the correct alphapose format.
+        """
+        alphapose_fmt = []
+        results = self.phc_model.predict(frame, device='mps', stream = True)
 
-while cap.isOpened():
-    read, frame = cap.read()
+        for result in results:
+            c_names = result.names
+            for box in result.boxes:
+                box_score = box.conf[0]
+                if box_score > 0.4:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-    if not read:
-        print('Something went wrong')
-        break
+                    c_idx = int(box.cls[0])
+                    class_name = c_names[c_idx]
+
+                    if class_name == 'pitcher':
+                        pitcher_frame = frame[y1:y2, x1:x2]
+
+                        key, score = self.tracker(pitcher_frame)
+
+                        if len(key) == 2: # Only want pitcher, not catcher
+                            key = key[0].reshape(1, 17, 2)
+                            score = score[0].reshape(1, 17)
+                        
+                        key = coco_2_h36m(key)
+                        conversion = np.squeeze(key)
+                        score = np.squeeze(score)
+
+                        flatten_conversion = [(x, y) for x,y in conversion]
+                        alphapose = convert_2_alphapose(flatten_conversion, score, box_score.item())
+                        alphapose_fmt.append(alphapose)
+
+                        if output_frame:
+                            self.output_frames(pitcher_frame, key, self.skeleton_dict)
+
+        return alphapose_fmt
     
-    results = model.predict(frame, device='mps', stream=True)
+    def read_frame(self) -> List[Dict[str, Any]]:
+        """
+        Reads in each frame, processes it to alphapose format, then returns it.
 
-    for result in results:
-        c_names = result.names
-        for box in result.boxes:
-            box_score = box.conf[0]
-            if box_score > 0.4:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                
-                cls = int(box.cls[0])
-                class_name = c_names[cls]
+        Args:
+            None YAY!!
+        Returns:
+            alphapose_fmt (list): A list of dictionaries that are in the correct alphapose format.
+        """
+        cap = cv2.VideoCapture(self.video_path)
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        alphapose_fmt = []
+        
+        with tqdm(total=n_frames, desc='Processing Frames', unit='frame') as progress:
+            while cap.isOpened():
+                read, frame = cap.read()
 
-                if class_name == 'pitcher':
-                    pitcher_frame = frame[y1:y2, x1:x2]
-                   
-                    key, score = tracker(pitcher_frame)
+                if not read:
+                    print('Something went wrong. Most likely, the video ended.')
+                    break
 
+                alphapose_fmt.extend(self.process_frame(frame))
 
-                    img_show = frame.copy()
+                progress.update(1)
 
-
-                    if len(key) == 2: # Only want pitcher, not catcher.
-                        key = key[0].reshape(1, 17, 2)
-                        score = score[0].reshape(1, 17)
-
-                    # Remember: Draw skeleton is expecting the input to be COCO format
-                    img_show = draw_skeleton(pitcher_frame, key, score, False, 0.5, line_width=3)
-
-                    conversion = np.squeeze(coco_2_h36m(key))
-                    scores = np.squeeze(score) # Bad variable name
-                    flatten_conversion = [(x, y) for x, y in conversion]
-
-                    alphapose = convert_2_alphapose(flatten_conversion, scores, box_score.item())
-
-                    alphapose_fmt.append(alphapose)
-
-
-                    cv2.circle(pitcher_frame, (int(key[0, 14, 0]), int(key[0, 14, 1])), 3, (0, 0, 255), 5) # Should be Right knee
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0 ,255, 0), 2)
-                    cv2.putText(frame, f'{c_names[int(box.cls[0])]} {box.conf[0]:.2f}', 
-                                (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-    #out.write(frame)
-    cv2.imshow('img', frame)
+        cap.release()
+        return alphapose_fmt
     
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    def write_frame(self, out_path: str, output_frame: bool = False) -> None:
+        """
+        Saves the annotated video as a mp4 so you can show it off to your friends.
 
-cap.release()
-cv2.destroyAllWindows()
+        Args:
+            output_path (str): The output path you want the annotated video to save.
+            output_frame (bool): A condition of whether you want to output the frame on the screen, default to False.
 
-with open('test.json', 'w') as f:
-    alph_json = json.dumps(alphapose_fmt)
-    f.write(alph_json)
+        Returns:
+            None
+        """
+        cap = cv2.VideoCapture(self.video_path)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fps = 40
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) 
+        out = cv2.VideoWriter(out_path, fourcc, fps, (frame_width, frame_height))
 
+        while cap.isOpened():
+            read, frame = cap.read()
+
+            if not read:
+                print('Something went wrong. Most likely, the video ended.')
+                break
+
+            self.process_frame(frame, output_frame)
+
+            out.write(frame)
+            if output_frame:
+                cv2.imshow("pitcher", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        
+        cap.release()
+        cv2.destroyAllWindows()
+
+    def write_2d_frame(self, json_name: str) -> None:
+        """
+        Writes the converted alphapose dictionary format to json. Hint: Don't put .json, I've already done that for you.
+
+        Args:
+            json_name (str): The json file name you want the json to save.
+        
+        Returns:
+            None
+        """
+        with open(f'{json_name}.json', 'w') as f:
+            alph_json = json.dumps(self.read_frame())
+            f.write(alph_json)
+
+
+if __name__ == '__main__':
+    estimator = TwoDEstimator('assets/test.mp4')
+
+    estimator.write_2d_frame('cool')

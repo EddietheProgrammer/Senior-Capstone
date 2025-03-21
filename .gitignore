@@ -5,4 +5,5 @@ assets/paper/
 __pycache__
 butter.ipynb
 test.json
+cool.py
 # To remove .DS_Store manually: find . -name ".DS_Store" -delete

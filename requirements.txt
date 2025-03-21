@@ -10,3 +10,4 @@ baseballcv==0.1.1
 ultralytics==8.3.93
 numpy==2.2.4
 rtmlib -i https://pypi.org/simple
+onnxruntime
