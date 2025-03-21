@@ -1,5 +1,6 @@
 import cv2
 from cv2.typing import MatLike
+import os
 from baseballcv.functions import LoadTools
 from ultralytics import YOLO
 from rtmlib import PoseTracker, Body
@@ -10,7 +11,7 @@ from h36m import h36m
 from tqdm import tqdm
 from typing import List, Dict, Any
 
-# TODO: FIX NONIMPLENTATION ERROR FROM THE TRACKER. I KNOW IT HAS SOMETHING TO DO WITH THE __call__ Method from YOLO.
+# TODO: Fix the video writer function. It is for some reason not showing the annotations.
 class TwoDEstimator:
     """
     Class that estimates the 2D poses of MLB Pitchers. 2 Main Functions
@@ -18,11 +19,10 @@ class TwoDEstimator:
     2. Write 2d Json: Purpose of this is to convert the poses to H36M format, which is then fed into the 3D model.
     """
 
-    def __init__(self, video_path: str) -> None:
-        self.tools = LoadTools()
+    def __init__(self, video_path: str, pose_model: YOLO, tracker: PoseTracker) -> None:
         self.video_path = video_path
-        self.phc_model = YOLO(self.tools.load_model('phc_detector', model_type='YOLO'))
-        self.tracker = PoseTracker(Body, 7, False, mode='performance', backend='onxruntime', device='cpu')
+        self.phc_model = pose_model
+        self.tracker = tracker
         self.skeleton_dict = eval('h36m')
 
     def output_frames(self, frame: MatLike, keypoints: np.ndarray, skeleton_dict: Dict[str, Any]) -> MatLike:
@@ -44,7 +44,8 @@ class TwoDEstimator:
 
         return img
 
-    def process_frame(self, frame: MatLike, output_frame: bool = False) -> List[Dict[str, Any]]:
+    def process_frame(self, frame: MatLike, output_frame: bool = False, 
+                      write_frame: bool = False) -> List[Dict[str, Any]] | MatLike:
         """
         Processes the frames and converts it from coco17 to h36m format. A YOLO model is first ran to identify
         the pitcher, then RTMPose is used to extract the body coordinates for the pitcher.
@@ -88,8 +89,10 @@ class TwoDEstimator:
 
                         if output_frame:
                             self.output_frames(pitcher_frame, key, self.skeleton_dict)
-
-        return alphapose_fmt
+        if write_frame:
+            return frame
+        else:
+            return alphapose_fmt
     
     def read_frame(self) -> List[Dict[str, Any]]:
         """
@@ -105,7 +108,7 @@ class TwoDEstimator:
         
         alphapose_fmt = []
         
-        with tqdm(total=n_frames, desc='Processing Frames', unit='frame') as progress:
+        with tqdm(total=n_frames, desc='Processing Frames For Json Output', unit='frame') as progress:
             while cap.isOpened():
                 read, frame = cap.read()
 
@@ -120,46 +123,55 @@ class TwoDEstimator:
         cap.release()
         return alphapose_fmt
     
-    def write_frame(self, out_path: str, output_frame: bool = False) -> None:
+    def write_frame(self, out_name: str, output_frame: bool = False) -> None:
         """
         Saves the annotated video as a mp4 so you can show it off to your friends.
+        Make sure to have an assets/ folder. That's where the video will be saved.
 
         Args:
-            output_path (str): The output path you want the annotated video to save.
+            output_path (str): The output path you want the annotated video to save. Doesn't need to have .mp4. I've done that.
             output_frame (bool): A condition of whether you want to output the frame on the screen, default to False.
 
         Returns:
             None
         """
+        assert os.path.exists('assets/'), "Need to have an assets/ folder in your local directory."
+        assert not out_name[-4:] == '.mp4', "You don't need to end it with .mp4, I've already done that."
+        assert '.' not in out_name, "Please, no . in output name, also only supported extension is .mp4"
+
         cap = cv2.VideoCapture(self.video_path)
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         fps = 40
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) 
-        out = cv2.VideoWriter(out_path, fourcc, fps, (frame_width, frame_height))
+        out = cv2.VideoWriter(f'assets/{out_name}.mp4', fourcc, fps, (frame_width, frame_height))
 
-        while cap.isOpened():
-            read, frame = cap.read()
+        with tqdm(total=n_frames, desc='Processing Frames For Video Writer', unit='frame') as progress:
+            while cap.isOpened():
+                read, frame = cap.read()
 
-            if not read:
-                print('Something went wrong. Most likely, the video ended.')
-                break
+                if not read:
+                    print('Something went wrong. Most likely, the video ended.')
+                    break
 
-            self.process_frame(frame, output_frame)
+                out.write(self.process_frame(frame, output_frame, True))
+                if output_frame:
+                    cv2.imshow("pitcher", frame)
 
-            out.write(frame)
-            if output_frame:
-                cv2.imshow("pitcher", frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                progress.update(1)
         
         cap.release()
         cv2.destroyAllWindows()
 
-    def write_2d_frame(self, json_name: str) -> None:
+    def write_2d_frame_json(self, json_name: str) -> None:
         """
-        Writes the converted alphapose dictionary format to json. Hint: Don't put .json, I've already done that for you.
+        Writes the converted alphapose dictionary format to json. The file is written in your local directory.
+        
+        Hint: Don't put .json, I've already done that for you.
 
         Args:
             json_name (str): The json file name you want the json to save.
@@ -167,12 +179,18 @@ class TwoDEstimator:
         Returns:
             None
         """
+        assert not json_name[-5:] == '.json', "You don't need to specify .json, I've already done that."
+        assert '.' not in json_name, "Don't use . in the json output name. Also, only supported file type is .json"
+
         with open(f'{json_name}.json', 'w') as f:
             alph_json = json.dumps(self.read_frame())
             f.write(alph_json)
 
 
 if __name__ == '__main__':
-    estimator = TwoDEstimator('assets/test.mp4')
+    tools = LoadTools()
+    pose_model = YOLO(tools.load_model('phc_detector', model_type='YOLO')) # You can use whatever pose model you want, for this though I recommend baseballcv, it's awesome
+    tracker = PoseTracker(Body, 7, False, mode='performance', backend='onnxruntime', device='cpu')
+    estimator = TwoDEstimator('assets/test.mp4', pose_model, tracker)
 
-    estimator.write_2d_frame('cool')
+    estimator.write_2d_frame_json('cool')
