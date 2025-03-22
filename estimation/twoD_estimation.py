@@ -4,10 +4,10 @@ import os
 from baseballcv.functions import LoadTools
 from ultralytics import YOLO
 from rtmlib import PoseTracker, Body
-from utils import coco_2_h36m, convert_2_alphapose, draw
+from estimation.utils import coco_2_h36m, convert_2_alphapose, draw
 import numpy as np
 import json
-from h36m import h36m
+from estimation.h36m import h36m
 from tqdm import tqdm
 from typing import List, Dict, Any
 
@@ -19,9 +19,9 @@ class TwoDEstimator:
     2. Write 2d Json: Purpose of this is to convert the poses to H36M format, which is then fed into the 3D model.
     """
 
-    def __init__(self, video_path: str, pose_model: YOLO, tracker: PoseTracker) -> None:
+    def __init__(self, video_path: str, detector: YOLO, tracker: PoseTracker) -> None:
         self.video_path = video_path
-        self.phc_model = pose_model
+        self.phc_model = detector
         self.tracker = tracker
         self.skeleton_dict = eval('h36m')
 
