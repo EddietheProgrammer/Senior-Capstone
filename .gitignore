@@ -5,5 +5,5 @@ assets/paper/
 __pycache__
 test.json
 cool.py
-infer_wild.py
+arg_parser.py
 # To remove .DS_Store manually: find . -name ".DS_Store" -delete
