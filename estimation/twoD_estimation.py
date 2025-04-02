@@ -4,14 +4,13 @@ import os
 from baseballcv.functions import LoadTools
 from ultralytics import YOLO
 from rtmlib import PoseTracker, Body
-from estimation.utils import coco_2_h36m, convert_2_alphapose, draw
+from .utils import coco_2_h36m, convert_2_alphapose, draw
 import numpy as np
 import json
-from estimation.h36m import h36m
+from .h36m import h36m
 from tqdm import tqdm
 from typing import List, Dict, Any
 
-# TODO: Fix the video writer function. It is for some reason not showing the annotations.
 class TwoDEstimator:
     """
     Class that estimates the 2D poses of MLB Pitchers. 2 Main Functions
@@ -129,7 +128,7 @@ class TwoDEstimator:
         Make sure to have an assets/ folder. That's where the video will be saved.
 
         Args:
-            output_path (str): The output path you want the annotated video to save. Doesn't need to have .mp4. I've done that.
+            output_path (str): The output path you want the annotated video to save. Doesn't need to have .mp4. I've done that. (e.g. 'assets/test-output')
             output_frame (bool): A condition of whether you want to output the frame on the screen, default to False.
 
         Returns:
@@ -171,7 +170,7 @@ class TwoDEstimator:
         """
         Writes the converted alphapose dictionary format to json. The file is written in your local directory.
         
-        Hint: Don't put .json, I've already done that for you.
+        Hint: Don't put .json, I've already done that for you. (e.g. 'test')
 
         Args:
             json_name (str): The json file name you want the json to save.
@@ -185,12 +184,3 @@ class TwoDEstimator:
         with open(f'{json_name}.json', 'w') as f:
             alph_json = json.dumps(self.read_frame())
             f.write(alph_json)
-
-
-if __name__ == '__main__':
-    tools = LoadTools()
-    pose_model = YOLO(tools.load_model('phc_detector', model_type='YOLO')) # You can use whatever pose model you want, for this though I recommend baseballcv, it's awesome
-    tracker = PoseTracker(Body, 7, False, mode='performance', backend='onnxruntime', device='cpu')
-    estimator = TwoDEstimator('assets/test.mp4', pose_model, tracker)
-
-    estimator.write_2d_frame_json('cool')

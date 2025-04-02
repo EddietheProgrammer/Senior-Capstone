@@ -1,13 +1,12 @@
 tqdm
 easydict
 smplx
-opencv-python==4.11.0.86
 imageio
-matplotlib==3.1.1
+imageio[ffmpeg]
+matplotlib
 ipdb
 pytorch-metric-learning                         # For one-shot action recognition
-baseballcv==0.1.1
+baseballcv==0.1.2
 ultralytics==8.3.93
-numpy==2.2.4
 rtmlib -i https://pypi.org/simple
 onnxruntime

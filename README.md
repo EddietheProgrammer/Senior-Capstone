@@ -30,7 +30,8 @@ Lastly, you will need to:
 ```bash
 pip install -r requirements.txt
 ```
-I hopefully put everything there that is needed and it works, but if not, let me know. 
+**NOTE**: I need to update some things in requirements.txt so you may still encounter `ModuleNotFoundError`. Just
+`pip install` the corresponding package name for now. I'll try to fix it.
 
 This will install everything you need. I will update if there's additional packages. To deactivate your environment, simply type `deactivate` in the terminal.
 
@@ -38,12 +39,24 @@ Also, please use a .gitignore file for files you don't want merged with the main
 i.e. the `myenv` folder. To do this, create a file called .gitignore then type your environment name in the file. It should be greyed out.
 
 # Running
-Under the 2D estimation folder, you will need to run the `2D_estimation.py` file to extract the points from the mp4 video. I still need to make some customizations so it's more efficient and runs seamlessly. Once you do that, it should write to a `test.json` file. Those are the coordinates used for the 3D pose model. To run the 3D pose model, you simply type in the terminal:
-```bash
-python infer_wild.py 
---vid_path <your_video.mp4> # For this case, it's assets/test.mp4
---json_path <alphapose-results.json>  # For this case it's test.json
---out_path <output_path> # For this case it's assets/
+I've made running this thing pretty simple. You just run things in `main.py`. The only work you will have to do is 
+by populating the `assets/` folder with video data, specifically from MLB feed. Some examples of running include:
+```python
+from baseballcv.functions import LoadTools
+from ultralytics import YOLO
+from rtmlib import PoseTracker, Body
+from threeD_estimation import ThreeDEstimator
+
+tools = LoadTools()
+pose_model = YOLO(tools.load_model('phc_detector', model_type='YOLO')) 
+tracker = PoseTracker(Body, 7, False, mode='performance', backend='onnxruntime', device='mps')
+
+estimator = ThreeDEstimator(video_path='assets/test.mp4', json_name='test') # The video file in your assets folde + what you want to call the json output
+
+estimator.extract_2D_coordinates(pose_model, tracker) # Exctracts the coordinates and writes it to a json file
+estimator.write_2D_output(pose_model, tracker, True) # Writes the 2D pose model
+estimator.write_3D_output() # Writes the 3D pose model
+predicted_keypoints = estimator.run_model()
 ```
 
 ## Editors Note:
