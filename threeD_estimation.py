@@ -14,6 +14,7 @@ from estimation.twoD_estimation import TwoDEstimator
 from scipy.signal import butter, filtfilt
 from ultralytics import YOLO
 from rtmlib import PoseTracker
+from typing import Tuple
 
 class ThreeDEstimator:
     """
@@ -21,10 +22,10 @@ class ThreeDEstimator:
     to extract and clean the 2D estimates before feeding it into the 3D model. 
 
     Main Functions:
-    1. extract_2D_coordinates: This extracts the 2D coordinates of a 2D video feed and write it to a json file.
-    2. write_2D_output: This writes the 2D coordinates (in H36M format) into a video file, for you to show off to your friends.
-    3. run_model: This returns the predicted xyz coordinate array of the 3D pose for each frame.
-    4. write_3D_output: This writes the 3D coordinates into a video file for you to show off to your friends.
+    1. `extract_2D_coordinates`: This extracts the 2D coordinates of a 2D video feed and write it to a json file.
+    2. `write_2D_output`: This writes the 2D coordinates (in H36M format) into a video file, for you to show off to your friends.
+    3. `derive_kinematics`: This returns estimated angles of the kinematic sequence.
+    4. `write_3D_output`: This writes the 3D coordinates into a video file for you to show off to your friends.
 
     In progress: Making a function that derives various biomechanical metrics.
     """
@@ -62,7 +63,7 @@ class ThreeDEstimator:
 
         Args:
             pose_model (YOLO): The model to use for classifying objects. BaseballCV's phc_detector model suffices for this.
-            The reason it's not in the model is because RTMLib needs to `__call__` a YOLO model, and putting it in a function
+            The reason it's not in the function is because RTMLib needs to `__call__` a YOLO model, and putting it in a function
             creates an error. 
             tracker (PoseTracker): The tracking model to use for classifying each body part. This function is tuned more to
             RTMPose where the key points are in the COCO-17 format.
@@ -72,6 +73,16 @@ class ThreeDEstimator:
         
         """
         TwoDEstimator(self.video_path, pose_model, tracker).write_2d_frame_json(self.json_name)
+
+    def clear_2D_json(self) -> None:
+        """
+        Clears the json file so there are no overwriting conflicts with the next file
+
+        Returns:
+            None :)
+        """
+        with open(f'{self.json_name}.json', 'w') as f:
+            json.dump([], f)
     
     def write_2D_output(self, pose_model: YOLO, tracker: PoseTracker, output_frame: bool = False) -> None:
         """
@@ -130,9 +141,10 @@ class ThreeDEstimator:
             
             x, y, z = part[:, 0], part[:, 1], part[:, 2]
         
-            x = self._butterworth_filter(x, 5, self.fps_in)
-            y = self._butterworth_filter(y, 5, self.fps_in)
-            z = self._butterworth_filter(z, 5, self.fps_in)
+            x = self._butterworth_filter(x, 12, self.fps_in)
+            y = self._butterworth_filter(y, 12, self.fps_in)
+            z = self._butterworth_filter(z, 12, self.fps_in)
+
 
             filt_part = np.stack([x, y , z], axis=1)
             filt_results.append(filt_part)
@@ -140,7 +152,7 @@ class ThreeDEstimator:
         return np.stack(filt_results, axis=1)
 
 
-    def run_model(self) -> np.ndarray:
+    def _run_model(self) -> np.ndarray:
         """
         Runs the 3D model on the json input.
 
@@ -171,12 +183,83 @@ class ThreeDEstimator:
 
 
         results = self._apply_lowpass_butterworth_filter(results)
+        results[:, :, 2] *= -1 # Flip Points so head is one top
+
+        # Shift points to where the pitcher isn't rising so much
+        ground_z = results[0, 3, 2]
+        # 6 and 3 for ankles
+        for i in range(len(results)):
+
+            next_ground_z = min(results[i, 3, 2], results[i, 6, 2])
+
+            distance = next_ground_z - ground_z
+
+            results[i, :, 2] = results[i, :, 2] - distance
 
         return results
     
     # TODO: Write a function that uses the 3D model outputs to derive biomechanical data.
 
-    def write_3D_output(self, file_name: str = '3D-output'):
+    def derive_kinematics(self) -> Tuple[float, float, float]:
+        """
+        Derives the Kinematic Angles of the pitch sequence. For now angular velocity is not
+        derived, only parts of the mechanics such:
+        * Elbow Flexion
+        * Shoulder Abduction
+        * Knee Flexion
+
+        These are also only derived when the lead foot hits the ground. Future work can include 
+        different parts of the sequence.
+
+        For a more detailed description of the methodology, please see citation ____ in the paper
+
+        Returns:
+            tuple(float, float, float): The derived kinematic angles of the pitch sequence
+
+        """
+        results = self._run_model()
+
+        # For now I'm only deriving these angles at footstrike
+        peak_lead_foot = np.argmax(results[:, 6, 2])
+        after_peak = results[peak_lead_foot:]
+        foot_strike = np.argmin(after_peak[:, 6, 2])
+
+        frame = peak_lead_foot + foot_strike
+
+        #################################################
+        # Derive required unit vectors
+        z1 = results[frame, 15, :] - results[frame, 14, :]
+        z2 = results[frame, 16, :] - results[frame, 15, :]
+        z3 = results[frame, 11, :] - results[frame, 8, :] 
+
+        trunk = results[frame, 0, :] - results[frame, 8, :]
+        thigh = results[frame, 4, :] - results[frame, 5, :]
+        shank = results[frame, 5, :] - results[frame, 6, :]
+
+        z1 = z1 / np.linalg.norm(z1)
+        z2 = z2 / np.linalg.norm(z2)
+        z3 = z3 / np.linalg.norm(z3)
+        trunk = trunk / np.linalg.norm(trunk)
+        thigh = thigh / np.linalg.norm(thigh)
+        shank = shank / np.linalg.norm(shank)
+
+        x3 = np.cross(trunk, z3)
+        x3 = x3 / np.linalg.norm(x3)
+
+        y3 = np.cross(z3, x3)
+        y3 = y3 / np.linalg.norm(y3)
+        #################################################
+
+        # Derive the Angles
+        #################################################
+        elbow_flexion = np.degrees(np.arccos(np.dot(z1, z2)))
+        shoulder_abduction = 180 - np.degrees(np.arccos(np.dot(z1, y3)))
+        knee_flexion = np.degrees(np.arccos(np.dot(thigh, shank)))
+
+        return elbow_flexion, shoulder_abduction, knee_flexion
+
+        
+    def write_3D_output(self, file_name: str = '3D-output') -> None:
         """
         Writes the 3D video feed into a .mp4 file using the coordinates derived from `run_model`. 
         The video should be flipped for LHP and RHP to make it look like catcher's view.
@@ -189,5 +272,5 @@ class ThreeDEstimator:
         Returns:
             None :)
         """
-        results = self.run_model()
+        results = self._run_model()
         render_and_save(results, f'%s/{file_name}.mp4' % ('assets/3D-outputs/'), keep_imgs=False, fps = self.fps_in)

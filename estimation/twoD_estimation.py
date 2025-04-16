@@ -74,14 +74,13 @@ class TwoDEstimator:
 
                         key, score = self.tracker(pitcher_frame)
 
-                        if len(key) == 2: # Only want pitcher, not catcher
+                        if len(key) > 1: # Only want pitcher, not catcher or batter
                             key = key[0].reshape(1, 17, 2)
                             score = score[0].reshape(1, 17)
                         
                         key = coco_2_h36m(key)
                         conversion = np.squeeze(key)
                         score = np.squeeze(score)
-
                         flatten_conversion = [(x, y) for x,y in conversion]
                         alphapose = convert_2_alphapose(flatten_conversion, score, box_score.item())
                         alphapose_fmt.append(alphapose)
@@ -106,16 +105,21 @@ class TwoDEstimator:
         n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         alphapose_fmt = []
+        num_blank = 0
         
         with tqdm(total=n_frames, desc='Processing Frames For Json Output', unit='frame') as progress:
             while cap.isOpened():
                 read, frame = cap.read()
 
-                if not read:
-                    print('Something went wrong. Most likely, the video ended.')
+                if not read or num_blank == 10:
+                    print('Something went wrong. Most likely, the video ended or too many misreads of pitcher.')
                     break
+                fmt = self.process_frame(frame)
 
-                alphapose_fmt.extend(self.process_frame(frame))
+                if len(fmt) == 0 and progress.n > 200:
+                    num_blank += 1
+
+                alphapose_fmt.extend(fmt)
 
                 progress.update(1)
 

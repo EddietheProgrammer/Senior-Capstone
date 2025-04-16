@@ -1,3 +1,6 @@
+baseballcv==0.1.21
+datasets
+roboflow
 tqdm
 easydict
 smplx
@@ -6,7 +9,6 @@ imageio[ffmpeg]
 matplotlib
 ipdb
 pytorch-metric-learning                         # For one-shot action recognition
-baseballcv==0.1.2
 ultralytics==8.3.93
 rtmlib -i https://pypi.org/simple
 onnxruntime

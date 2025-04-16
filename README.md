@@ -40,7 +40,23 @@ i.e. the `myenv` folder. To do this, create a file called .gitignore then type y
 
 # Running
 I've made running this thing pretty simple. You just run things in `main.py`. The only work you will have to do is 
-by populating the `assets/` folder with video data, specifically from MLB feed. Some examples of running include:
+by populating the `assets/` folder with video data, specifically from MLB feed. If you want a guide for populating 
+video data, use the `BaseballSavVideoScraper` function from [baseballcv](https://github.com/dylandru/BaseballCV/tree/main).
+An example of this is creating a python file and writing this:
+```python
+from baseballcv.functions.savant_scraper import BaseballSavVideoScraper
+
+BaseballSavVideoScraper(
+    '2024-03-29', 
+    player = 675911,
+    team_abbr='ATL',
+    pitch_type='FF',
+    max_return_videos=10,
+    download_folder='assets/videos'
+).run_executor()
+```
+
+Some examples of running the 3D estimator include:
 ```python
 from baseballcv.functions import LoadTools
 from ultralytics import YOLO
@@ -51,18 +67,22 @@ tools = LoadTools()
 pose_model = YOLO(tools.load_model('phc_detector', model_type='YOLO')) 
 tracker = PoseTracker(Body, 7, False, mode='performance', backend='onnxruntime', device='mps')
 
-estimator = ThreeDEstimator(video_path='assets/test.mp4', json_name='test') # The video file in your assets folde + what you want to call the json output
+# The video file in your assets folder + what you want to call the json output
+estimator = ThreeDEstimator(video_path='assets/test.mp4', json_name='test') 
 
-estimator.extract_2D_coordinates(pose_model, tracker) # Exctracts the coordinates and writes it to a json file
-estimator.write_2D_output(pose_model, tracker, True) # Writes the 2D pose model
-estimator.write_3D_output() # Writes the 3D pose model
-predicted_keypoints = estimator.run_model()
-```
+# Exctracts the coordinates and writes it to a json file
+estimator.extract_2D_coordinates(pose_model, tracker)
 
-## Editors Note:
-You may also need to install the following:
-```bash
-pip install git+https://github.com/Jensen-holm/statcast-era-pitches.git 
+# Writes the 2D pose model
+estimator.write_2D_output(pose_model, tracker, output_frame=True)
+
+# Writes the 3D pose model
+estimator.write_3D_output()
+
+# Derives the kinematic metrics
+elbow_flexion, shoulder_abduction, knee_flexion = estimator.derive_kinematics()
+
+estimator.clear_2D_json()
 ```
 
 # Contributing
